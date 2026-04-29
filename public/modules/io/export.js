@@ -206,6 +206,156 @@ async function exportToPngTiles() {
   }
 }
 
+async function exportToXyzTiles() {
+  const status = byId("xyzTileStatus");
+  const maxZoom = +byId("xyzMaxZoomOutput").value || 5;
+
+  status.innerHTML = "Preparing map image...";
+  const url = await getMapURL("tiles", {fullMap: true});
+
+  await import("../../libs/jszip.min.js");
+  const zip = new window.JSZip();
+
+  // Reusable 256×256 canvas — never larger, avoids all browser canvas size limits
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+
+  const img = new Image();
+  img.src = url;
+  await loadImage(img);
+
+  // Sum of 4^z for z=0..maxZoom = (4^(maxZoom+1) - 1) / 3
+  const totalTiles = (4 ** (maxZoom + 1) - 1) / 3;
+  let tilesDone = 0;
+
+  for (let z = 0; z <= maxZoom; z++) {
+    const gridSize = 1 << z;
+    const srcW = graphWidth / gridSize;
+    const srcH = graphHeight / gridSize;
+
+    for (let x = 0; x < gridSize; x++) {
+      for (let y = 0; y < gridSize; y++) {
+        tilesDone++;
+        status.innerHTML = `Rendering tile z=${z} x=${x} y=${y} (${tilesDone} of ${totalTiles})...`;
+        ctx.drawImage(img, x * srcW, y * srcH, srcW, srcH, 0, 0, 256, 256);
+        const blob = await canvasToBlob(canvas, "image/png");
+        ctx.clearRect(0, 0, 256, 256);
+        zip.file(`${z}/${x}/${y}.png`, blob);
+      }
+    }
+  }
+
+  const metadata = JSON.stringify(
+    {
+      name: mapName.value || "Fantasy Map",
+      minZoom: 0,
+      maxZoom,
+      tileSize: 256,
+      width: graphWidth,
+      height: graphHeight
+    },
+    null,
+    2
+  );
+  zip.file("metadata.json", metadata);
+  zip.file("index.html", buildLeafletViewer(maxZoom));
+
+  status.innerHTML = "Zipping files...";
+  zip
+    .generateAsync({type: "blob"})
+    .then(blob => {
+      status.innerHTML = "Downloading the archive...";
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = getFileName("xyz-tiles") + ".zip";
+      link.click();
+      link.remove();
+      status.innerHTML = 'Done. Check .zip file in "Downloads" (CTRL + J)';
+      setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    })
+    .catch(error => {
+      ERROR && console.error(error);
+      status.innerHTML = "XYZ tiles export failed";
+      tip(`XYZ tiles export failed: ${error?.message || "Unknown error"}`, true, "error", 5000);
+    });
+
+  function loadImage(img) {
+    return new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = err => reject(err);
+    });
+  }
+
+  function canvasToBlob(canvas, mimeType) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas toBlob() error"));
+      }, mimeType);
+    });
+  }
+}
+
+function buildLeafletViewer(maxZoom) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Fantasy Map Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+  <style>html, body, #map { height: 100%; margin: 0; background: #000; }</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  fetch("metadata.json").then(r => r.json()).then(meta => {
+    const tileSize = 256;
+    const W = meta.width;
+    const H = meta.height;
+
+    // Custom CRS so tile indices come out correct for a non-geographic image.
+    //
+    // L.CRS.Simple default transformation (1, 0, -1, 0):
+    //   pixel.x = lng * 2^z  →  tile_x = floor(lng * 2^z / 256) — wrong scale (off by W/256)
+    //   pixel.y = -lat * 2^z →  tile_y is negative for top of image (lat > 0)
+    //
+    // We need: tile_x = floor(x_img * 2^z / W)
+    //          tile_y = floor(y_img * 2^z / H)
+    //
+    // L.Transformation(a, b, c, d): pixel.x = a*lng + b, pixel.y = c*lat + d
+    //
+    // Map CRS coords as [lat, lng] = [-y_img, x_img] (lat goes UP, conventional):
+    //   a = tileSize/W : pixel.x = lng * tileSize/W → tile_x = floor(x_img * 2^z / W) ✓
+    //   c = -tileSize/H: pixel.y = -lat * tileSize/H = y_img * tileSize/H
+    //                  → tile_y = floor(y_img * 2^z / H) ✓
+    //
+    // Bounds in [lat, lng] = [-y_img, x_img]:
+    //   SW (image bottom-left): [-H, 0]   NE (image top-right): [0, W]
+    const imageCRS = L.extend({}, L.CRS.Simple, {
+      transformation: new L.Transformation(tileSize / W, 0, -tileSize / H, 0)
+    });
+
+    const map = L.map("map", { crs: imageCRS, minZoom: -3, maxZoom: meta.maxZoom });
+    const bounds = [[-H, 0], [0, W]];
+    L.tileLayer("{z}/{x}/{y}.png", {
+      tileSize: tileSize,
+      noWrap: true,
+      bounds: bounds,
+      minZoom: 0,
+      maxZoom: meta.maxZoom,
+      errorTileUrl: ""
+    }).addTo(map);
+    map.fitBounds(bounds);
+  });
+<\/script>
+</body>
+</html>`;
+}
+
 // parse map svg to object url
 async function getMapURL(
   type,

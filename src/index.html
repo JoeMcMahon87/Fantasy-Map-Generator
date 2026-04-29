@@ -6217,6 +6217,17 @@
 
         <p>Generator uses pop-up window to download files. Please ensure your browser does not block popups.</p>
 
+        <div style="margin: 1em 0 0.3em; font-weight: bold">Export to Map Tiles</div>
+        <div>
+          <button
+            onclick="openExportToXyzTiles()"
+            data-tip="Export map as XYZ tile pyramid (z/x/y.png) for use in Leaflet or similar viewers"
+          >
+            xyz tiles
+          </button>
+        </div>
+        <p>Export to Mercator XYZ map tiles in a ZIP file suitable for Leaflet usage.</p>
+
         <div style="margin: 1em 0 0.3em; font-weight: bold">Export to GeoJSON</div>
         <div>
           <button onclick="saveGeoJsonCells()" data-tip="Download cells data in GeoJSON format">cells</button>
@@ -6364,6 +6375,32 @@
           <div id="tileSize" style="display: inline-block">1000 x 1000 px</div>
         </div>
         <div id="tileStatus" style="font-style: italic"></div>
+      </div>
+
+      <div id="exportToXyzTilesScreen" style="display: none" class="dialog">
+        <p>
+          Map is exported as a standard XYZ tile pyramid (z/x/y.png) inside a ZIP file.
+          A Leaflet viewer (index.html) is included. Open the ZIP contents via a local
+          HTTP server: <code>python3 -m http.server</code> or <code>npx serve</code>.
+        </p>
+        <div data-tip="Maximum zoom level (0–5 is safe on all browsers; 6 is Chrome/Firefox only)" style="margin-bottom: 0.3em">
+          <div class="label">Max zoom:</div>
+          <input
+            id="xyzMaxZoomInput"
+            data-stored="xyzMaxZoom"
+            type="range"
+            min="1"
+            max="6"
+            value="5"
+            style="width: 10em"
+          />
+          <input id="xyzMaxZoomOutput" data-stored="xyzMaxZoom" type="number" min="1" max="6" value="5" />
+        </div>
+        <div data-tip="Total number of tiles across all zoom levels" style="margin-bottom: 0.3em">
+          <div class="label">Total tiles:</div>
+          <div id="xyzTileCount" style="display: inline-block">1,365</div>
+        </div>
+        <div id="xyzTileStatus" style="font-style: italic"></div>
       </div>
 
       <div id="alert" style="display: none" class="dialog">

@@ -775,7 +775,7 @@ function showExportPane() {
   $("#exportMapData").dialog({
     title: "Export map data",
     resizable: false,
-    width: "26em",
+    width: "30em",
     position: {my: "center", at: "center", of: "svg"},
     buttons: {
       Close: function () {
@@ -949,6 +949,41 @@ function updateTilesOptions() {
       ""
     )}</g>
   `);
+}
+
+function openExportToXyzTiles() {
+  byId("xyzTileStatus").innerHTML = "";
+  closeDialogs();
+  updateXyzTilesOptions();
+
+  const inputs = byId("exportToXyzTilesScreen").querySelectorAll("input");
+  inputs.forEach(input => input.addEventListener("input", updateXyzTilesOptions));
+
+  $("#exportToXyzTilesScreen").dialog({
+    resizable: false,
+    title: "Download XYZ tiles",
+    width: "26em",
+    buttons: {
+      Download: () => exportToXyzTiles(),
+      Cancel: function () {
+        $(this).dialog("close");
+      }
+    },
+    close: () => inputs.forEach(input => input.removeEventListener("input", updateXyzTilesOptions))
+  });
+}
+
+function updateXyzTilesOptions() {
+  if (this?.tagName === "INPUT") {
+    const {nextElementSibling: next, previousElementSibling: prev} = this;
+    if (next?.tagName === "INPUT") next.value = this.value;
+    if (prev?.tagName === "INPUT") prev.value = this.value;
+  }
+
+  const maxZoom = +byId("xyzMaxZoomOutput").value || 5;
+  // Sum of 4^z for z=0..maxZoom = (4^(maxZoom+1) - 1) / 3
+  const total = (4 ** (maxZoom + 1) - 1) / 3;
+  byId("xyzTileCount").innerHTML = total.toLocaleString();
 }
 
 // View mode
